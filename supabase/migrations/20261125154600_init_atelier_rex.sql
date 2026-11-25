@@ -1,9 +1,9 @@
 -- ============================================================================
--- Atelier REX — Innov'Camp 26 (Groupama × Onepoint)
--- Script SQL à exécuter une seule fois dans : Supabase Dashboard > SQL Editor
+-- Migration initiale : Atelier REX — Innov'Camp 26 (Groupama × Onepoint)
+-- Tables, politiques RLS, fonctions RPC et publication Supabase Realtime
 -- ============================================================================
 
-create extension if not exists pgcrypto;
+create extension if not exists pgcrypto with schema extensions;
 
 -- 1. Table des post-its
 create table if not exists public.workshop_notes (
@@ -131,7 +131,7 @@ begin
 end;
 $$;
 
--- Vote atomique +1 (toggle par participant_id)
+-- Vote atomique (toggle par participant_id)
 create or replace function public.toggle_note_vote(p_note_id text, p_participant_id text)
 returns public.workshop_notes
 language plpgsql
