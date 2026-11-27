@@ -113,17 +113,64 @@ export function useWorkshopSocket(
         supabase.rpc('facilitator_status'),
       ]);
 
+      if (notesRes.error) {
+        console.error('[Supabase] Erreur SELECT workshop_notes:', {
+          code: notesRes.error.code,
+          message: notesRes.error.message,
+          details: notesRes.error.details,
+          hint: notesRes.error.hint,
+        });
+      }
+      if (settingsRes.error) {
+        console.error('[Supabase] Erreur SELECT workshop_settings:', {
+          code: settingsRes.error.code,
+          message: settingsRes.error.message,
+          details: settingsRes.error.details,
+          hint: settingsRes.error.hint,
+        });
+      }
+      if (statusRes.error) {
+        console.error('[Supabase] Erreur RPC facilitator_status:', {
+          code: statusRes.error.code,
+          message: statusRes.error.message,
+          details: statusRes.error.details,
+          hint: statusRes.error.hint,
+        });
+      }
+
       const settingsRows = (settingsRes.data ?? []) as SupabaseSettingsRow[];
       const anySeeded = settingsRows.some((s) => s.seeded);
 
-      if (!anySeeded && (!notesRes.data || notesRes.data.length === 0)) {
+      if (
+        !notesRes.error &&
+        !settingsRes.error &&
+        !anySeeded &&
+        (!notesRes.data || notesRes.data.length === 0)
+      ) {
         const seedNotes = buildSeedNotesForTheme();
-        await supabase.rpc('seed_initial_notes', { p_notes: seedNotes });
+        const { error: seedError } = await supabase.rpc('seed_initial_notes', {
+          p_notes: seedNotes,
+        });
+        if (seedError) {
+          console.error('[Supabase] Erreur RPC seed_initial_notes:', {
+            code: seedError.code,
+            message: seedError.message,
+            details: seedError.details,
+            hint: seedError.hint,
+          });
+        }
         const refetched = await supabase
           .from('workshop_notes')
           .select('*')
           .order('created_at', { ascending: true });
-        if (refetched.data) {
+        if (refetched.error) {
+          console.error('[Supabase] Erreur SELECT workshop_notes après seed:', {
+            code: refetched.error.code,
+            message: refetched.error.message,
+            details: refetched.error.details,
+            hint: refetched.error.hint,
+          });
+        } else if (refetched.data) {
           setNotes((refetched.data as SupabaseNoteRow[]).map(mapSupabaseNote));
         }
       } else if (notesRes.data) {
@@ -147,7 +194,7 @@ export function useWorkshopSocket(
         setRequiresClaim(Boolean((statusRes.data as { requiresClaim?: boolean }).requiresClaim));
       }
     } catch (err) {
-      console.error('Erreur de chargement Supabase:', err);
+      console.error('[Supabase] Exception lors du chargement initial:', err);
     } finally {
       setLoading(false);
     }
@@ -210,7 +257,12 @@ export function useWorkshopSocket(
         }
         setPresence(users);
       })
-      .subscribe((status) => {
+      .subscribe((status, err) => {
+        if (err) {
+          console.error('[Supabase Realtime] Erreur de souscription:', err);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error('[Supabase Realtime] Statut canal anormal:', status);
+        }
         const isJoined = status === 'SUBSCRIBED';
         setConnected(isJoined);
         if (isJoined && participantRef.current) {
@@ -491,7 +543,15 @@ export function useWorkshopSocket(
               rotation,
             },
           });
-          if (error) throw new Error(error.message);
+          if (error) {
+            console.error('[Supabase] Échec RPC facilitator_create_note:', {
+              code: error.code,
+              message: error.message,
+              details: error.details,
+              hint: error.hint,
+            });
+            throw new Error(error.message);
+          }
           const created = mapSupabaseNote(data as SupabaseNoteRow);
           setNotes((prev) => (prev.some((n) => n.id === created.id) ? prev : [...prev, created]));
           return created;
@@ -517,8 +577,14 @@ export function useWorkshopSocket(
           .single();
 
         if (error) {
+          console.error('[Supabase] Échec INSERT workshop_notes:', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+          });
           throw new Error(
-            error.message.includes('policy')
+            error.message.includes('row-level security') || error.message.includes('policy')
               ? "L'ajout de post-its est verrouillé sur cette thématique."
               : error.message,
           );
@@ -537,6 +603,10 @@ export function useWorkshopSocket(
         body: JSON.stringify(params),
       });
       if (!res.ok) {
+        console.error('[Atelier REX] Échec POST /api/notes (Supabase non actif lors du build ?) :', {
+          status: res.status,
+          statusText: res.statusText,
+        });
         const err = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(err.error ?? "Impossible d'ajouter le post-it.");
       }
@@ -562,7 +632,15 @@ export function useWorkshopSocket(
           .eq('id', noteId)
           .select()
           .single();
-        if (error) throw new Error(error.message);
+        if (error) {
+          console.error('[Supabase] Échec UPDATE workshop_notes (texte):', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+          });
+          throw new Error(error.message);
+        }
         const updated = mapSupabaseNote(data as SupabaseNoteRow);
         setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
         return updated;
@@ -598,7 +676,15 @@ export function useWorkshopSocket(
           .from('workshop_notes')
           .update({ column_id: column, updated_at: Date.now() })
           .eq('id', noteId);
-        if (error) await loadSupabaseInitial();
+        if (error) {
+          console.error('[Supabase] Échec UPDATE workshop_notes (colonne):', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+          });
+          await loadSupabaseInitial();
+        }
         return;
       }
 
@@ -622,14 +708,30 @@ export function useWorkshopSocket(
             p_token: facilitatorToken,
             p_note_id: noteId,
           });
-          if (error) throw new Error(error.message);
+          if (error) {
+            console.error('[Supabase] Échec RPC facilitator_delete_note:', {
+              code: error.code,
+              message: error.message,
+              details: error.details,
+              hint: error.hint,
+            });
+            throw new Error(error.message);
+          }
         } else {
           const { error } = await supabase
             .from('workshop_notes')
             .delete()
             .eq('id', noteId)
             .eq('author_id', authorId);
-          if (error) throw new Error(error.message);
+          if (error) {
+            console.error('[Supabase] Échec DELETE workshop_notes:', {
+              code: error.code,
+              message: error.message,
+              details: error.details,
+              hint: error.hint,
+            });
+            throw new Error(error.message);
+          }
         }
         setNotes((prev) => prev.filter((n) => n.id !== noteId));
         return;
@@ -671,7 +773,14 @@ export function useWorkshopSocket(
         p_note_id: noteId,
         p_participant_id: participantId,
       });
-      if (!error && data) {
+      if (error) {
+        console.error('[Supabase] Échec RPC toggle_note_vote:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        });
+      } else if (data) {
         const updated = mapSupabaseNote(data as SupabaseNoteRow);
         setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
       }
@@ -696,7 +805,14 @@ export function useWorkshopSocket(
           p_theme_id: themeId,
           p_action: action,
         });
-        if (!error && data) {
+        if (error) {
+          console.error('[Supabase] Échec RPC control_workshop_timer:', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+          });
+        } else if (data) {
           const nextTimer = mapSupabaseTimer(data as SupabaseSettingsRow);
           setTimers((prev) => ({ ...prev, [themeId]: nextTimer }));
         }
