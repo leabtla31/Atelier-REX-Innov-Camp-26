@@ -32,7 +32,13 @@ export function exportWorkshopCSV(notes: NoteItem[]): void {
             `${theme.tabLabel} — ${theme.title}`,
             col.label,
             PROFILES[note.profile].label,
-            note.isPreFilled ? 'Pré-rempli' : note.authorName,
+            note.isPreFilled
+              ? note.profile === 'coach'
+                ? 'coachs'
+                : note.profile === 'groupama'
+                ? 'groupama'
+                : 'participants'
+              : note.authorName,
             note.isPreFilled ? 'Oui' : 'Non',
             note.text,
             note.voterIds.length,
@@ -164,7 +170,13 @@ function drawThemePage(doc: jsPDF, theme: ThemeConfig, themeNotes: NoteItem[], i
       // Footer of post-it: author / pre-filled + votes
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(6.5);
-      const metaLeft = note.isPreFilled ? 'Pré-rempli' : note.authorName;
+      const metaLeft = note.isPreFilled
+        ? note.profile === 'coach'
+          ? 'coachs'
+          : note.profile === 'groupama'
+          ? 'groupama'
+          : 'participants'
+        : note.authorName;
       const metaRight = note.voterIds.length > 0 ? `+${note.voterIds.length}` : '';
       doc.text(metaLeft, x + 4.5, cursorY + cardHeight - 2);
       if (metaRight) {

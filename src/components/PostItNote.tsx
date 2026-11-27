@@ -148,7 +148,13 @@ export function PostItNote({
           <div className="mt-3 pt-2 border-t border-white/20 flex items-end justify-between gap-1.5">
             <div className="min-w-0 flex flex-col gap-0.5">
               <span className="text-[12px] font-medium text-white/90 truncate">
-                {note.isPreFilled ? 'pré-rempli' : note.authorName}
+                {note.isPreFilled
+                  ? note.profile === 'coach'
+                    ? 'coachs'
+                    : note.profile === 'groupama'
+                    ? 'groupama'
+                    : 'participants'
+                  : note.authorName}
               </span>
               {!mergeMode && (
                 <div className="flex items-center gap-1">
